@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 
 export default function TicTacToe3D() {
@@ -62,8 +62,9 @@ export default function TicTacToe3D() {
     createBoard(scene);
 
     // Animation loop
+    let animationId;
     function animate() {
-      requestAnimationFrame(animate);
+      animationId = requestAnimationFrame(animate);
       
       // Rotate board slowly
       scene.rotation.y += 0.002;
@@ -84,6 +85,9 @@ export default function TicTacToe3D() {
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
       if (containerRef.current && renderer.domElement.parentNode === containerRef.current) {
         containerRef.current.removeChild(renderer.domElement);
       }
@@ -91,110 +95,9 @@ export default function TicTacToe3D() {
     };
   }, []);
 
-  // Handle clicks
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-
-    function handleClick(event) {
-      if (winner) return;
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
-      const intersects = raycasterRef.current.intersectObjects(boardMeshesRef.current);
-
-      if (intersects.length > 0) {
-        const clickedMesh = intersects[0].object;
-        const index = clickedMesh.userData.index;
-
-        if (gameState[index] === null) {
-          const newGameState = [...gameState];
-          newGameState[index] = currentPlayer;
-          setGameState(newGameState);
-
-          // Add piece to board
-          addPiece(sceneRef.current, index, currentPlayer);
-
-          // Check for winner
-          const winningPlayer = checkWinner(newGameState);
-          if (winningPlayer) {
-            setWinner(winningPlayer);
-          } else if (!newGameState.includes(null)) {
-            setWinner('Draw');
-          } else {
-            setCurrentPlayer(currentPlayer === 'X' ? 'O' : 'X');
-          }
-        }
-      }
-    }
-
-    renderer.domElement.addEventListener('click', handleClick);
-    return () => {
-      renderer.domElement.removeEventListener('click', handleClick);
-    };
-  }, [gameState, currentPlayer, winner]);
-
-  function createBoard(scene) {
-    const boardGroup = new THREE.Group();
-    const boardSize = 5;
-    const spacing = 2.5;
-    const squareSize = 2;
+  const addPiece = useCallback((scene, index, player) => {
+    if (!scene) return;
     
-    // Create grid squares
-    for (let i = 0; i < boardSize; i++) {
-      for (let j = 0; j < boardSize; j++) {
-        const geometry = new THREE.BoxGeometry(squareSize, 0.3, squareSize);
-        const material = new THREE.MeshStandardMaterial({
-          color: 0x2d4059,
-          metalness: 0.3,
-          roughness: 0.7
-        });
-        const square = new THREE.Mesh(geometry, material);
-        
-        square.position.set(
-          (j - 2) * spacing,
-          0,
-          (i - 2) * spacing
-        );
-        square.castShadow = true;
-        square.receiveShadow = true;
-        square.userData.index = i * boardSize + j;
-        
-        boardMeshesRef.current.push(square);
-        boardGroup.add(square);
-      }
-    }
-
-    // Create grid lines
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4a90e2, linewidth: 2 });
-    
-    // Vertical lines (4 lines between 5 columns)
-    for (let i = -1.5; i <= 1.5; i += 1) {
-      const points = [];
-      points.push(new THREE.Vector3(i * spacing, 0.2, -5.5));
-      points.push(new THREE.Vector3(i * spacing, 0.2, 5.5));
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, lineMaterial);
-      boardGroup.add(line);
-    }
-
-    // Horizontal lines (4 lines between 5 rows)
-    for (let i = -1.5; i <= 1.5; i += 1) {
-      const points = [];
-      points.push(new THREE.Vector3(-5.5, 0.2, i * spacing));
-      points.push(new THREE.Vector3(5.5, 0.2, i * spacing));
-      const geometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(geometry, lineMaterial);
-      boardGroup.add(line);
-    }
-
-    scene.add(boardGroup);
-  }
-
-  function addPiece(scene, index, player) {
     const boardSize = 5;
     const spacing = 2.5;
     const row = Math.floor(index / boardSize);
@@ -251,9 +154,9 @@ export default function TicTacToe3D() {
 
       console.log('Added O piece at', x, z);
     }
-  }
+  }, []);
 
-  function checkWinner(board) {
+  const checkWinner = useCallback((board) => {
     const boardSize = 5;
     const winLength = 5; // Need 5 in a row to win
     
@@ -330,6 +233,109 @@ export default function TicTacToe3D() {
     }
     
     return null;
+  }, []);
+
+  // Handle clicks
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+
+    function handleClick(event) {
+      if (winner) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseRef.current.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+      const intersects = raycasterRef.current.intersectObjects(boardMeshesRef.current);
+
+      if (intersects.length > 0) {
+        const clickedMesh = intersects[0].object;
+        const index = clickedMesh.userData.index;
+
+        if (gameState[index] === null) {
+          const newGameState = [...gameState];
+          newGameState[index] = currentPlayer;
+          setGameState(newGameState);
+
+          // Add piece to board
+          addPiece(sceneRef.current, index, currentPlayer);
+
+          // Check for winner
+          const winningPlayer = checkWinner(newGameState);
+          if (winningPlayer) {
+            setWinner(winningPlayer);
+          } else if (!newGameState.includes(null)) {
+            setWinner('Draw');
+          } else {
+            setCurrentPlayer(currentPlayer === 'X' ? 'O' : 'X');
+          }
+        }
+      }
+    }
+
+    renderer.domElement.addEventListener('click', handleClick);
+    return () => {
+      renderer.domElement.removeEventListener('click', handleClick);
+    };
+  }, [gameState, currentPlayer, winner, addPiece, checkWinner]);
+
+  function createBoard(scene) {
+    const boardGroup = new THREE.Group();
+    const boardSize = 5;
+    const spacing = 2.5;
+    const squareSize = 2;
+    
+    // Create grid squares
+    for (let i = 0; i < boardSize; i++) {
+      for (let j = 0; j < boardSize; j++) {
+        const geometry = new THREE.BoxGeometry(squareSize, 0.3, squareSize);
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x2d4059,
+          metalness: 0.3,
+          roughness: 0.7
+        });
+        const square = new THREE.Mesh(geometry, material);
+        
+        square.position.set(
+          (j - 2) * spacing,
+          0,
+          (i - 2) * spacing
+        );
+        square.castShadow = true;
+        square.receiveShadow = true;
+        square.userData.index = i * boardSize + j;
+        
+        boardMeshesRef.current.push(square);
+        boardGroup.add(square);
+      }
+    }
+
+    // Create grid lines
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4a90e2, linewidth: 2 });
+    
+    // Vertical lines (4 lines between 5 columns)
+    for (let i = -1.5; i <= 1.5; i += 1) {
+      const points = [];
+      points.push(new THREE.Vector3(i * spacing, 0.2, -5.5));
+      points.push(new THREE.Vector3(i * spacing, 0.2, 5.5));
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geometry, lineMaterial);
+      boardGroup.add(line);
+    }
+
+    // Horizontal lines (4 lines between 5 rows)
+    for (let i = -1.5; i <= 1.5; i += 1) {
+      const points = [];
+      points.push(new THREE.Vector3(-5.5, 0.2, i * spacing));
+      points.push(new THREE.Vector3(5.5, 0.2, i * spacing));
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geometry, lineMaterial);
+      boardGroup.add(line);
+    }
+
+    scene.add(boardGroup);
   }
 
   function resetGame() {
